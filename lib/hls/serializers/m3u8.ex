@@ -155,18 +155,30 @@ defmodule HLS.Serializers.M3U8 do
 
   defp insert_extinf_tags(%HLS.Manifest{segments: segments}) do
     for segment <- segments do
-      duration =
-        if floor(segment.duration) == segment.duration do
-          floor(segment.duration)
-        else
-          segment.duration
-        end
+      cond do
+        # Handle x_map segments (for .m4s stitching with format changes)
+        segment.uri == nil and segment.discontinuity and segment.x_map ->
+          "\n#EXT-X-DISCONTINUITY\n#EXT-X-MAP:URI=\"#{segment.x_map}\"\n\n"
 
-      "#EXTINF:#{duration},#{segment.title}\n"
-      |> maybe_insert_tiles(segment)
-      |> maybe_insert_byte_range(segment)
-      |> then(&(&1 <> "#{segment.uri}\n"))
-      |> maybe_prepend_program_date_time(segment)
+        # Handle discontinuity-only segments (for .ts stitching with timeline breaks)
+        segment.uri == nil and segment.discontinuity ->
+          "\n#EXT-X-DISCONTINUITY\n"
+
+        # Handle normal media segments
+        true ->
+          duration =
+            if floor(segment.duration) == segment.duration do
+              floor(segment.duration)
+            else
+              segment.duration
+            end
+
+          "#EXTINF:#{duration},#{segment.title}\n"
+          |> maybe_insert_tiles(segment)
+          |> maybe_insert_byte_range(segment)
+          |> then(&(&1 <> "#{segment.uri}\n"))
+          |> maybe_prepend_program_date_time(segment)
+      end
     end
   end
 
