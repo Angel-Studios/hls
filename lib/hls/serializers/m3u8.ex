@@ -155,18 +155,34 @@ defmodule HLS.Serializers.M3U8 do
 
   defp insert_extinf_tags(%HLS.Manifest{segments: segments}) do
     for segment <- segments do
-      duration =
-        if floor(segment.duration) == segment.duration do
-          floor(segment.duration)
-        else
-          segment.duration
-        end
+      cond do
 
-      "#EXTINF:#{duration},#{segment.title}\n"
-      |> maybe_insert_tiles(segment)
-      |> maybe_insert_byte_range(segment)
-      |> then(&(&1 <> "#{segment.uri}\n"))
-      |> maybe_prepend_program_date_time(segment)
+        # These first two conditions enable a backwards-compatible inclusion of inline
+        # discontinuity segments used for stitching both .m4s and .ts manifests.
+        # Neither of these segemnts have a uri, and will be marked as discontinuities.
+        # The presence of an x_map with the discontinutity indicates a .m4s manifest.
+
+        segment.uri == nil and segment.discontinuity and segment.x_map ->
+          "\n#EXT-X-DISCONTINUITY\n#EXT-X-MAP:URI=\"#{segment.x_map}\"\n\n"
+
+        segment.uri == nil and segment.discontinuity ->
+          "\n#EXT-X-DISCONTINUITY\n"
+
+        # Handle normal media segments
+        true ->
+          duration =
+            if floor(segment.duration) == segment.duration do
+              floor(segment.duration)
+            else
+              segment.duration
+            end
+
+          "#EXTINF:#{duration},#{segment.title}\n"
+          |> maybe_insert_tiles(segment)
+          |> maybe_insert_byte_range(segment)
+          |> then(&(&1 <> "#{segment.uri}\n"))
+          |> maybe_prepend_program_date_time(segment)
+      end
     end
   end
 
