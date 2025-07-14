@@ -43,7 +43,7 @@ defmodule HLSTest do
     #EXT-X-TARGETDURATION:10
     #EXT-X-VERSION:4
     #EXT-X-MEDIA-SEQUENCE:0
-    #EXTINF:10,	
+    #EXTINF:10,
     #EXT-X-BYTERANGE:522828@0
     hls_450k_video.ts
     #ZEN-TOTAL-DURATION:1621.07780
@@ -65,7 +65,7 @@ defmodule HLSTest do
     #EXT-X-DISCONTINUITY-SEQUENCE:1
     #EXT-X-VERSION:4
     #EXT-X-MEDIA-SEQUENCE:0
-    #EXTINF:10,	
+    #EXTINF:10,
     #EXT-X-BYTERANGE:522828@0
     hls_450k_video.ts
     #EXT-X-ENDLIST
@@ -550,5 +550,116 @@ defmodule HLSTest do
            |> HLS.serialize()
            |> HLS.parse()
            |> Map.get(:target_duration) == 5
+  end
+
+  test "serializes inline discontinuity segment with x_map" do
+    manifest = %HLS.Manifest{
+      version: 7,
+      type: :vod,
+      target_duration: 10,
+      media_sequence: 0,
+      segments: [
+        %HLS.Segment{
+          uri: "segment1.m4s",
+          duration: 10.0,
+          title: ""
+        },
+        %HLS.Segment{
+          uri: nil,
+          discontinuity: true,
+          x_map: "init2.mp4"
+        },
+        %HLS.Segment{
+          uri: "segment2.m4s",
+          duration: 10.0,
+          title: ""
+        }
+      ]
+    }
+
+    m3u8 = HLS.serialize(manifest)
+
+    expected_discontinuity_section = """
+    #EXT-X-DISCONTINUITY
+    #EXT-X-MAP:URI="init2.mp4"
+
+    """
+
+    assert String.contains?(m3u8, expected_discontinuity_section)
+    assert String.contains?(m3u8, "segment1.m4s")
+    assert String.contains?(m3u8, "segment2.m4s")
+  end
+
+  test "serializes inline discontinuity segment without x_map" do
+    manifest = %HLS.Manifest{
+      version: 3,
+      type: :vod,
+      target_duration: 10,
+      media_sequence: 0,
+      segments: [
+        %HLS.Segment{
+          uri: "segment1.ts",
+          duration: 10.0,
+          title: ""
+        },
+        %HLS.Segment{
+          uri: nil,
+          discontinuity: true,
+          x_map: nil
+        },
+        %HLS.Segment{
+          uri: "segment2.ts",
+          duration: 10.0,
+          title: ""
+        }
+      ]
+    }
+
+    m3u8 = HLS.serialize(manifest)
+
+    expected_discontinuity_section = "\n#EXT-X-DISCONTINUITY\n"
+
+    assert String.contains?(m3u8, expected_discontinuity_section)
+    assert String.contains?(m3u8, "segment1.ts")
+    assert String.contains?(m3u8, "segment2.ts")
+    # Should not contain any MAP tag
+    refute String.contains?(m3u8, "#EXT-X-MAP")
+  end
+
+  test "inline discontinuity segments do not interfere with normal segments" do
+    manifest = %HLS.Manifest{
+      version: 7,
+      type: :vod,
+      target_duration: 10,
+      media_sequence: 0,
+      segments: [
+        %HLS.Segment{
+          uri: "normal_segment.m4s",
+          duration: 10.0,
+          title: "Normal Segment",
+          discontinuity: false
+        },
+        %HLS.Segment{
+          uri: nil,
+          discontinuity: true,
+          x_map: "init.mp4"
+        },
+        %HLS.Segment{
+          uri: "another_segment.m4s",
+          duration: 5.5,
+          title: "Another Segment",
+          discontinuity: false
+        }
+      ]
+    }
+
+    m3u8 = HLS.serialize(manifest)
+
+    # Normal segments should have EXTINF tags
+    assert String.contains?(m3u8, "#EXTINF:10,Normal Segment\nnormal_segment.m4s")
+    assert String.contains?(m3u8, "#EXTINF:5.5,Another Segment\nanother_segment.m4s")
+
+    # Should have the discontinuity and map tags together
+    assert String.contains?(m3u8, "#EXT-X-DISCONTINUITY\n#EXT-X-MAP:URI=\"init.mp4\"")
   end
 end
