@@ -156,11 +156,15 @@ defmodule HLS.Serializers.M3U8 do
   defp insert_extinf_tags(%HLS.Manifest{segments: segments}) do
     for segment <- segments do
       cond do
-        # Handle x_map segments (for .m4s stitching with format changes)
+
+        # These first two conditions enable a backwards-compatible inclusion of inline
+        # discontinuity segments used for stitching both .m4s and .ts manifests.
+        # Neither of these segemnts have a uri, and will be marked as discontinuities.
+        # The presence of an x_map with the discontinutity indicates a .m4s manifest.
+
         segment.uri == nil and segment.discontinuity and segment.x_map ->
           "\n#EXT-X-DISCONTINUITY\n#EXT-X-MAP:URI=\"#{segment.x_map}\"\n\n"
 
-        # Handle discontinuity-only segments (for .ts stitching with timeline breaks)
         segment.uri == nil and segment.discontinuity ->
           "\n#EXT-X-DISCONTINUITY\n"
 
